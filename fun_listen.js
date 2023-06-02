@@ -35,6 +35,77 @@ function getRawTransaction(tx) {
 }
 
 
+async function send_origin_bundle(){
+    const flashbotsProvider = await FlashbotsBundleProvider.create(
+        http_provider,
+        authSigner,
+        "https://relay-goerli.flashbots.net",
+        "goerli"
+    );
+    while(true){
+        let targetBlockNumber = (await http_provider.getBlockNumber()) + 1
+        let gasPrice = await http_provider.getGasPrice()
+        let first_tx = {
+            signer: main_wallet,
+            transaction: {
+                to: small_wallet.address,
+                gasPrice: gasPrice.mul(3).div(2),
+                gasLimit: 21000,
+                chainId: http_provider.network.chainId,
+            }
+        }
+        let second_tx = {
+            signer: small_wallet,
+            transaction: {
+                to: main_wallet.address,
+                gasPrice: gasPrice.mul(2),
+                gasLimit: 21000,
+                chainId: http_provider.network.chainId,
+            }
+        }
+    
+        let bundle = [
+            first_tx,
+            second_tx
+        ]
+        console.log("Bundle",bundle)
+    
+        let signed_bundle = await flashbotsProvider.signBundle(bundle);
+        console.log("Signed Bunudle",signed_bundle)
+        const simulation = await flashbotsProvider.simulate(signed_bundle, targetBlockNumber)
+        if ("error" in simulation) {
+            console.log(`Simulation Error: ${simulation.error.message}`);
+        }
+        console.log(`Target is ${targetBlockNumber} Send it`)
+        console.log("Simulate Success")
+        // const flashbotsTransactionResponse = await flashbotsProvider.sendBundle(
+        //     // bundle,
+        //     signed_bundle,
+        //     targetBlockNumber
+        // )
+        const flashbotsTransactionResponse = await flashbotsProvider.sendRawBundle(signed_bundle, targetBlockNumber)
+        if ('error' in flashbotsTransactionResponse) {
+            throw new Error(flashbotsTransactionResponse.error)
+        }
+        
+    
+        const waitResponse = await flashbotsTransactionResponse.wait()
+        if (waitResponse === FlashbotsBundleResolution.BundleIncluded) {
+            console.log("Nice, include in ", targetBlockNumber)
+            process.exit(0)
+        } else if (waitResponse === FlashbotsBundleResolution.BlockPassedWithoutInclusion) {
+            console.log(`Not include in ${targetBlockNumber}`)
+            console.log("==========================")
+        } else if (waitResponse === FlashbotsBundleResolution.AccountNonceTooHigh) {
+            console.log(`AccountNonceTooHigh`)
+            process.exit(1)
+        }
+    }
+
+
+}
+
+
 async function send_bundle(first_tx){
     const flashbotsProvider = await FlashbotsBundleProvider.create(
         http_provider,
@@ -43,6 +114,7 @@ async function send_bundle(first_tx){
         "goerli"
     );
     let first_tx_raw = getRawTransaction(first_tx)
+    let small_wallet_nonce = await small_wallet.getTransactionCount()
     let targetBlockNumber = (await http_provider.getBlockNumber()) + 1
     let first_tx_gas_price = first_tx.gasPrice
     // let second_tx = {
@@ -56,8 +128,11 @@ async function send_bundle(first_tx){
     // }
     let second_tx = {
         to: main_wallet.address,
-        gasPrice: first_tx_gas_price.mul(3).div(2),
+        gasPrice: first_tx_gas_price.mul(3),
         gasLimit: 21000,
+        chainId: http_provider.network.chainId,
+        nonce: small_wallet_nonce,
+
     }
     let signed_second_tx = await small_wallet.signTransaction(second_tx)
 
@@ -73,14 +148,14 @@ async function send_bundle(first_tx){
 
     let signed_bundle = await flashbotsProvider.signBundle(bundle);
     console.log("Signed Bunudle",signed_bundle)
-    // const simulation = await flashbotsProvider.simulate(signed_bundle, targetBlockNumber)
-    // if ("error" in simulation) {
-    //     console.log(`Simulation Error: ${simulation.error.message}`);
-    // }
-    // console.log(`Target is ${targetBlockNumber} Send it`)
-    // console.log("Simulate Success")
-    const flashbotsTransactionResponse = await flashbotsProvider.sendBundle(
-        bundle,
+    const simulation = await flashbotsProvider.simulate(signed_bundle, targetBlockNumber)
+    if ("error" in simulation) {
+        console.log(`Simulation Error: ${simulation.error.message}`);
+    }
+    console.log(`Target is ${targetBlockNumber} Send it`)
+    console.log("Simulate Success")
+    const flashbotsTransactionResponse = await flashbotsProvider.sendRawBundle(
+        signed_bundle,
         targetBlockNumber
     )
     if ('error' in flashbotsTransactionResponse) {
@@ -123,6 +198,8 @@ async function check_pending() {
     })
     // return
 }
+
+// send_origin_bundle()
 
 check_pending()
 // console.log(ethers.utils.)

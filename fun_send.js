@@ -15,7 +15,8 @@ async function main_wallet_send_tx(){
             to: small_wallet.address,
             gasPrice: gasPrice.mul(8).div(7),
             gasLimit: 21000,
-            nonce: nonce
+            nonce: nonce,
+            chainId: http_provider.network.chainId,
         }
         let signed_tx = await main_wallet.signTransaction(tx);
         console.log("Raw transaction signature",signed_tx,'\n---------------------------')
